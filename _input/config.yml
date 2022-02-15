@@ -1,0 +1,15 @@
+training:
+  n_epochs: 50
+  batch_size: 128
+
+model:
+  # threshold used to quantize labels into buy, hold and sell
+  threshold: 25
+  # lob depth
+  depth: 10
+  # size of the time series snippet
+  window_size: 20
+  # in seconds for rolling max labels
+  prediction_horizon: 5
+  # oversample or undersample
+  resampling: oversample
