@@ -31,7 +31,8 @@ class CustomBookKafka(BookKafka):
 def main():
     
     f = FeedHandler()
-    cbs = {TRADES: TradeKafka(), L2_BOOK: CustomBookKafka(snapshots_only=True, interval=0.05)}
+    #cbs = {TRADES: TradeKafka(), L2_BOOK: CustomBookKafka(snapshots_only=True, interval=0.05)}
+    cbs = {TRADES: TradeKafka(), L2_BOOK: BookKafka(snapshots_only=True)}
 
     f.add_feed(Coinbase(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USD', 'ETH-USD'], callbacks=cbs))
     f.add_feed(Bitfinex(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USD', 'ETH-USD'], callbacks=cbs))
