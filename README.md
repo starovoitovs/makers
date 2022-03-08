@@ -3,7 +3,7 @@
 On the remote machine:
   
     # start zookeeper
-    `bin/zookeeper-server-start.sh config/zookeeper.properties`
+    bin/zookeeper-server-start.sh config/zookeeper.properties
     
     # start kafka
     bin/kafka-server-start.sh config/server.properties
