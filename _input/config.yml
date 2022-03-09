@@ -3,10 +3,12 @@ training:
   batch_size: 128
 
 model:
+  # label to train on
+  label: signal1
   # threshold used to quantize labels into buy, hold and sell
   threshold: 25
   # lob depth
-  depth: 10
+  depth: 1
   # size of the time series snippet
   window_size: 20
   # in seconds for rolling max labels

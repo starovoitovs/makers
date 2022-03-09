@@ -46,7 +46,7 @@ def get_metrics(y_true, y_pred):
 
     precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
     mat = confusion_matrix(y_true, y_pred)
-    mat_str = '\n'.join([' '.join(['{:7}'.format(x) for x in row]) for row in mat])
+    mat_str = '\n'.join([' ' * 20 + ' '.join(['{:7}'.format(x) for x in row]) for row in mat])
     r2 = r2_score(y_true, y_pred)
 
     output = (
