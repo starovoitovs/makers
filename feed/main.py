@@ -6,6 +6,7 @@ associated with this software.
 from cryptofeed import FeedHandler
 from cryptofeed.backends.kafka import BookKafka, TradeKafka
 from cryptofeed.defines import L2_BOOK, TRADES
+from cryptofeed.exchanges import Coinbase, Bitfinex, Binance, Poloniex, Gemini, Deribit, FTX, Kraken
 
 
 """
@@ -31,13 +32,16 @@ class CustomBookKafka(BookKafka):
 def main():
     
     f = FeedHandler()
-    #cbs = {TRADES: TradeKafka(), L2_BOOK: CustomBookKafka(snapshots_only=True, interval=0.05)}
+    #cbs = {TRADES: TradeKafka(), L2_BOOK: CustomBookKafka(snapshots_only=True, interval=0.005)}
     cbs = {TRADES: TradeKafka(), L2_BOOK: BookKafka(snapshots_only=True)}
 
-    f.add_feed(Coinbase(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USD', 'ETH-USD'], callbacks=cbs))
-    f.add_feed(Bitfinex(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USD', 'ETH-USD'], callbacks=cbs))
-    f.add_feed(Poloniex(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USDT', 'ETH-USDT'], callbacks=cbs))
-    f.add_feed(Gemini(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USD', 'ETH-USD'], callbacks=cbs))
+    f.add_feed(Coinbase(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USD', 'ETH-USD', 'ETH-BTC'], callbacks=cbs))
+    f.add_feed(Bitfinex(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USD', 'ETH-USD', 'ETH-BTC'], callbacks=cbs))
+    f.add_feed(Poloniex(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USDT', 'ETH-USDT', 'ETH-BTC'], callbacks=cbs))
+    f.add_feed(Gemini(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USD', 'ETH-USD', 'ETH-BTC'], callbacks=cbs))
+    #f.add_feed(Deribit(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USD', 'ETH-USD', 'ETH-BTC'], callbacks=cbs))
+    f.add_feed(FTX(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USD', 'ETH-USD', 'ETH-BTC'], callbacks=cbs))
+    f.add_feed(Kraken(max_depth=10, channels=[TRADES, L2_BOOK], symbols=['BTC-USD', 'ETH-USD', 'ETH-BTC'], callbacks=cbs))
     f.run()
 
 
