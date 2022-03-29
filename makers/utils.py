@@ -23,25 +23,6 @@ def get_lob_columns(depth):
     return [x for i in range(depth) for x in [f'bp{i}', f'bv{i}', f'ap{i}', f'av{i}']]
 
 
-def prepare(df, idxnum, depth, window_size):
-
-    idx = [np.arange(x - window_size + 1, x + 1) for x in idxnum]
-
-    lob_columns = get_lob_columns(depth)
-    X1 = df[lob_columns].to_numpy()[idx]
-
-    # subtract midprice
-    bid, ask = X1[:, -1, [0, 2]].T
-    mid_price = (bid + ask) / 2
-    pmask = [x for x in np.arange(4 * depth) if x % 2 == 0]
-    X1[:, :, pmask] -= mid_price[:, np.newaxis, np.newaxis]
-
-    # add axis
-    X1 = X1[:, :, :, np.newaxis]
-
-    return X1
-
-
 def get_metrics(y_true, y_pred):
 
     precision, recall, fscore, support = precision_recall_fscore_support(y_true, y_pred)
