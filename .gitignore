@@ -1,8 +1,10 @@
 .idea/
 .ipynb_checkpoints
 __pycache__/
-_input/data/*
-!_input/data/.gitkeep
+_input/*
+!_input/.gitkeep
 _output/*
 !_output/.gitkeep
+_logs
+_models
 

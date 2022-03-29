@@ -11,7 +11,5 @@ model:
   depth: 1
   # size of the time series snippet
   window_size: 20
-  # in seconds for rolling max labels
-  prediction_horizon: 5
   # oversample or undersample
   resampling: oversample
