@@ -23,8 +23,6 @@ hvd.init()
 # Horovod: pin GPU to be used to process local rank (one GPU per process)
 gpus = tf.config.experimental.list_physical_devices('GPU')
 
-print(gpus, hvd.local_rank())
-
 for gpu in gpus:
     tf.config.experimental.set_memory_growth(gpu, True)
 if gpus:
@@ -587,13 +585,12 @@ target = tf.zeros((n_paths, n_dimensions))
 log_dir = "_logs/fit/" + datetime.now().strftime("%Y%m%d-%H%M%S")
 
 # callbacks
-checkpoint_callback = ModelCheckpoint('/p/home/jusers/' + os.environ['USER'] + '/juwels/projects/makers/_models/weights{epoch:04d}.h5', save_weights_only=True, overwrite=True)
-tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 hvd_callback = hvd.callbacks.BroadcastGlobalVariablesCallback(0)
-
 callbacks = [hvd_callback]
 
 if hvd.rank() == 0:
+    checkpoint_callback = ModelCheckpoint('/p/home/jusers/' + os.environ['USER'] + '/juwels/projects/makers/_models/weights{epoch:04d}.h5', save_weights_only=True, overwrite=True)
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
     callbacks += [tensorboard_callback, checkpoint_callback]
 
 history = model_loss.fit([dW, dN], target,
