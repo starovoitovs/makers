@@ -3,7 +3,6 @@
 
 # In[ ]:
 
-
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Dense, Lambda, Reshape, concatenate, Layer
@@ -13,13 +12,26 @@ from tensorflow.keras.metrics import mean_squared_error
 from datetime import datetime
 from tensorflow.keras.metrics import mse
 from tensorflow.keras.optimizers import Adam
+import horovod.keras as hvd
+import os
 
+os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
-# In[5]:
+# init horovod
+hvd.init()
 
+# Horovod: pin GPU to be used to process local rank (one GPU per process)
+gpus = tf.config.experimental.list_physical_devices('GPU')
 
-print("Num GPUs Available: ", len(tf.config.list_physical_devices("GPU")))
+print(gpus, hvd.local_rank())
 
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
+if gpus:
+    tf.config.experimental.set_visible_devices(gpus[0], 'GPU')
+
+# Horovod: print logs on the first worker.
+verbose = 1 if hvd.rank() == 0 else 0
 
 # # Inputs
 
@@ -28,7 +40,7 @@ print("Num GPUs Available: ", len(tf.config.list_physical_devices("GPU")))
 
 # numerical parameters
 n_feeds = 18
-n_paths = 2 ** 18
+n_paths = 2 ** 8
 n_timesteps = 4
 T = 1.
 
@@ -39,7 +51,7 @@ T = 1.
 # learning parameters
 batch_size = 128
 epochs = 1000
-learning_rate = 1e-6
+learning_rate = 1e-5
 
 
 # In[8]:
@@ -549,6 +561,7 @@ outputs_paths = tf.stack(
     [tf.stack([p[3][:, :, i] for p in paths[1:]], axis=1) for i in range(n_jump_factors)], axis=2)
 
 adam = Adam(learning_rate=learning_rate)
+adam = hvd.DistributedOptimizer(adam)
 
 model_loss = Model([inputs_dW, inputs_dN], outputs_loss)
 model_loss.compile(loss='mse', optimizer=adam)
@@ -570,12 +583,23 @@ target = tf.zeros((n_paths, n_dimensions))
 
 # In[ ]:
 
-
+# tensorboard log dir
 log_dir = "_logs/fit/" + datetime.now().strftime("%Y%m%d-%H%M%S")
-checkpoint_callback = ModelCheckpoint('_models/weights{epoch:04d}.h5', save_weights_only=True, overwrite=True)
+
+# callbacks
+checkpoint_callback = ModelCheckpoint('/p/home/jusers/' + os.environ['USER'] + '/juwels/projects/makers/_models/weights{epoch:04d}.h5', save_weights_only=True, overwrite=True)
 tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-model_loss.save_weights('_models/weights0000.h5')
-history = model_loss.fit([dW, dN], target, batch_size=128, epochs=1000, callbacks=[checkpoint_callback, tensorboard_callback])
+hvd_callback = hvd.callbacks.BroadcastGlobalVariablesCallback(0)
+
+callbacks = [hvd_callback]
+
+if hvd.rank() == 0:
+    callbacks += [tensorboard_callback, checkpoint_callback]
+
+history = model_loss.fit([dW, dN], target,
+                         batch_size=batch_size,
+                         epochs=epochs,
+                         callbacks=callbacks)
 
 
 # In[18]:
