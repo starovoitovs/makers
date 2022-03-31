@@ -15,8 +15,15 @@ from makers.utils import *
 from keras import Model
 from keras.layers import Input, LSTM, Conv3D, Reshape, Dense, BatchNormalization, Dropout, concatenate, MaxPooling3D, Lambda, Layer, Activation
 from tensorflow.keras.optimizers import Adam
+import horovod.keras as hvd
 
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
+
+# init horovod
+hvd.init()
+
+# Horovod: print logs on the first worker.
+verbose = 1 if hvd.rank() == 0 else 0
 
 class ConvBook(Layer):
 
@@ -167,6 +174,7 @@ def build_model(window_size, n_exchanges, n_assets, n_targets, total_depth):
     outputs = [layer(x) for x in outputs]
 
     adam = Adam(learning_rate=1e-4)
+    adam = hvd.DistributedOptimizer(adam)
 
     model = Model(inputs, outputs)
     model.compile(optimizer=adam, loss='categorical_crossentropy')
@@ -298,13 +306,20 @@ def main():
     for f in glob.glob('_models/*'):
         os.remove(f)
 
-    cp_callback = ModelCheckpoint(filepath=model_path, monitor='val_loss', save_weights_only=True, save_best_only=True)
-    mo_callback = ModelCheckpoint('_models/weights{epoch:04d}.h5', save_weights_only=True, overwrite=True)
+    log_dir = "_output/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    # callbacks
+    hvd_callback = hvd.callbacks.BroadcastGlobalVariablesCallback(0)
+    callbacks = [hvd_callback]
+    if hvd.rank() == 0:
+        cp_callback = ModelCheckpoint(filepath=model_path, monitor='val_loss', save_weights_only=True, save_best_only=True)
+        tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+        callbacks += [tensorboard_callback, cp_callback]
 
     history = model.fit(X_train, tf.unstack(y_train, axis=1),
                         epochs=40,
                         batch_size=128,
-                        validation_split=0.15, callbacks=[cp_callback, mo_callback],
+                        validation_split=0.15, callbacks=callbacks,
                         verbose=2)
 
     # save history
