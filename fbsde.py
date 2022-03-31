@@ -14,6 +14,17 @@ from tensorflow.keras.metrics import mse
 from tensorflow.keras.optimizers import Adam
 import horovod.keras as hvd
 import os
+import argparse
+
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--n_paths', default=2**8, type=int)
+parser.add_argument('--n_timesteps', default=4, type=int)
+parser.add_argument('--time_horizon', default=1., type=float)
+parser.add_argument('--batch_size', default=128, type=int)
+parser.add_argument('--epochs', default=1000, type=int)
+parser.add_argument('--base_lr', default=1e-5, type=float)
+
+args = parser.parse_args()
 
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
@@ -38,19 +49,21 @@ verbose = 1 if hvd.rank() == 0 else 0
 
 # numerical parameters
 n_feeds = 18
-n_paths = 2 ** 8
-n_timesteps = 4
-T = 1.
+n_paths = args.n_paths
+n_timesteps = args.n_timesteps
+T = args.time_horizon
 
 
 # In[7]:
 
 
 # learning parameters
-batch_size = 128
-epochs = 1000
-learning_rate = 1e-5
+batch_size = args.batch_size
+epochs = args.epochs
+learning_rate = args.base_lr * hvd.size()
 
+# output
+print(f"Running with parameters:\n    n_paths={n_paths}\n    n_timesteps={n_timesteps}\n    time_horizon={T}\n    batch_size={batch_size}\n    epochs={epochs}\n    learning_rate={learning_rate}\n")
 
 # In[8]:
 
@@ -582,18 +595,34 @@ target = tf.zeros((n_paths, n_dimensions))
 # In[ ]:
 
 # tensorboard log dir
-log_dir = "_logs/fit/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+model_name = datetime.now().strftime("%Y%m%d-%H%M%S")
+log_dir = "_logs/fit/" + model_name
+
+# output parameters
+if hvd.rank() == 0:
+    os.makedirs('_models/' + model_name + '/all', exist_ok=True)
+    with open('_models/' + model_name + '/params.txt', 'w') as fi:
+        fi.write(f'n_paths: {n_paths}\n')
+        fi.write(f'n_timesteps: {n_timesteps}\n')
+        fi.write(f'time_horizon: {T}\n')
+    fi.close()
 
 # callbacks
 hvd_callback = hvd.callbacks.BroadcastGlobalVariablesCallback(0)
 callbacks = [hvd_callback]
 
 if hvd.rank() == 0:
-    checkpoint_callback = ModelCheckpoint('/p/home/jusers/' + os.environ['USER'] + '/juwels/projects/makers/_models/weights{epoch:04d}.h5', save_weights_only=True, overwrite=True)
-    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-    callbacks += [tensorboard_callback, checkpoint_callback]
+    checkpoint_callback = ModelCheckpoint('/p/home/jusers/' + os.environ['USER'] + '/juwels/projects/makers/_models/' + model_name + '/all/weights{epoch:04d}.h5', save_weights_only=True, overwrite=True)
+    best_callback = ModelCheckpoint('/p/home/jusers/' + os.environ['USER'] + '/juwels/projects/makers/_models/' + model_name + '/best.h5', save_best_only=True, save_weights_only=True, overwrite=True)
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch=1)
+    callbacks += [
+        tensorboard_callback,
+        checkpoint_callback,
+        best_callback,
+    ]
 
 history = model_loss.fit([dW, dN], target,
+                         verbose=2,
                          batch_size=batch_size,
                          epochs=epochs,
                          callbacks=callbacks)
