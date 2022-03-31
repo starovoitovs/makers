@@ -510,7 +510,8 @@ inputs_dW = Input(shape=(n_timesteps, n_diffusion_factors))
 inputs_dN = Input(shape=(n_timesteps, n_jump_factors))
 
 x0 = tf.Variable([[0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.]], trainable=False)
-y0 = tf.Variable([g(x0[0])], trainable=True)
+#y0 = tf.Variable([g(x0[0])], trainable=True)
+y0 = tf.Variable([5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., ], trainable=True)
 
 x = InitialValue(x0, name='x_0')(inputs_dW)
 y = InitialValue(y0, name='y_0')(inputs_dW)
@@ -595,8 +596,12 @@ target = tf.zeros((n_paths, n_dimensions))
 # In[ ]:
 
 # tensorboard log dir
-model_name = datetime.now().strftime("%Y%m%d-%H%M%S")
+timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+slurm_job_id = os.environ["SLURM_JOB_ID"]
+model_name = f"{timestamp}__{slurm_job_id}"
 log_dir = "_logs/fit/" + model_name
+
+print(f"Model name: {model_name}")
 
 # output parameters
 if hvd.rank() == 0:
