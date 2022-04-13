@@ -3,7 +3,6 @@
 
 # In[ ]:
 
-
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Input, Dense, Lambda, Reshape, concatenate, Layer
@@ -13,13 +12,35 @@ from tensorflow.keras.metrics import mean_squared_error
 from datetime import datetime
 from tensorflow.keras.metrics import mse
 from tensorflow.keras.optimizers import Adam
+import horovod.keras as hvd
+import os
+import argparse
 
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--n_paths', default=2**8, type=int)
+parser.add_argument('--n_timesteps', default=4, type=int)
+parser.add_argument('--time_horizon', default=1., type=float)
+parser.add_argument('--batch_size', default=128, type=int)
+parser.add_argument('--epochs', default=1000, type=int)
+parser.add_argument('--base_lr', default=1e-5, type=float)
 
-# In[5]:
+args = parser.parse_args()
 
+os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
-print("Num GPUs Available: ", len(tf.config.list_physical_devices("GPU")))
+# init horovod
+hvd.init()
 
+# Horovod: pin GPU to be used to process local rank (one GPU per process)
+gpus = tf.config.experimental.list_physical_devices('GPU')
+
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
+if gpus:
+    tf.config.experimental.set_visible_devices(gpus[0], 'GPU')
+
+# Horovod: print logs on the first worker.
+verbose = 1 if hvd.rank() == 0 else 0
 
 # # Inputs
 
@@ -28,19 +49,21 @@ print("Num GPUs Available: ", len(tf.config.list_physical_devices("GPU")))
 
 # numerical parameters
 n_feeds = 18
-n_paths = 2 ** 18
-n_timesteps = 4
-T = 1.
+n_paths = args.n_paths
+n_timesteps = args.n_timesteps
+T = args.time_horizon
 
 
 # In[7]:
 
 
 # learning parameters
-batch_size = 128
-epochs = 1000
-learning_rate = 1e-6
+batch_size = args.batch_size
+epochs = args.epochs
+learning_rate = args.base_lr * hvd.size()
 
+# output
+print(f"Running with parameters:\n    n_paths={n_paths}\n    n_timesteps={n_timesteps}\n    time_horizon={T}\n    batch_size={batch_size}\n    epochs={epochs}\n    learning_rate={learning_rate}\n")
 
 # In[8]:
 
@@ -487,7 +510,8 @@ inputs_dW = Input(shape=(n_timesteps, n_diffusion_factors))
 inputs_dN = Input(shape=(n_timesteps, n_jump_factors))
 
 x0 = tf.Variable([[0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.]], trainable=False)
-y0 = tf.Variable([g(x0[0])], trainable=True)
+#y0 = tf.Variable([g(x0[0])], trainable=True)
+y0 = tf.Variable([[5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5., 5.]], trainable=True)
 
 x = InitialValue(x0, name='x_0')(inputs_dW)
 y = InitialValue(y0, name='y_0')(inputs_dW)
@@ -549,6 +573,7 @@ outputs_paths = tf.stack(
     [tf.stack([p[3][:, :, i] for p in paths[1:]], axis=1) for i in range(n_jump_factors)], axis=2)
 
 adam = Adam(learning_rate=learning_rate)
+adam = hvd.DistributedOptimizer(adam)
 
 model_loss = Model([inputs_dW, inputs_dN], outputs_loss)
 model_loss.compile(loss='mse', optimizer=adam)
@@ -570,12 +595,42 @@ target = tf.zeros((n_paths, n_dimensions))
 
 # In[ ]:
 
+# tensorboard log dir
+timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+slurm_job_id = os.environ["SLURM_JOB_ID"]
+model_name = f"{timestamp}__{slurm_job_id}"
+log_dir = "_logs/fit/" + model_name
 
-log_dir = "_logs/fit/" + datetime.now().strftime("%Y%m%d-%H%M%S")
-checkpoint_callback = ModelCheckpoint('_models/weights{epoch:04d}.h5', save_weights_only=True, overwrite=True)
-tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
-model_loss.save_weights('_models/weights0000.h5')
-history = model_loss.fit([dW, dN], target, batch_size=128, epochs=1000, callbacks=[checkpoint_callback, tensorboard_callback])
+print(f"Model name: {model_name}")
+
+# output parameters
+if hvd.rank() == 0:
+    os.makedirs('_models/' + model_name + '/all', exist_ok=True)
+    with open('_models/' + model_name + '/params.txt', 'w') as fi:
+        fi.write(f'n_paths: {n_paths}\n')
+        fi.write(f'n_timesteps: {n_timesteps}\n')
+        fi.write(f'time_horizon: {T}\n')
+    fi.close()
+
+# callbacks
+hvd_callback = hvd.callbacks.BroadcastGlobalVariablesCallback(0)
+callbacks = [hvd_callback]
+
+if hvd.rank() == 0:
+    checkpoint_callback = ModelCheckpoint('/p/home/jusers/' + os.environ['USER'] + '/juwels/projects/makers/_models/' + model_name + '/all/weights{epoch:04d}.h5', save_weights_only=True, overwrite=True)
+    best_callback = ModelCheckpoint('/p/home/jusers/' + os.environ['USER'] + '/juwels/projects/makers/_models/' + model_name + '/best.h5', save_best_only=True, save_weights_only=True, overwrite=True)
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1, profile_batch=1)
+    callbacks += [
+        tensorboard_callback,
+        checkpoint_callback,
+        best_callback,
+    ]
+
+history = model_loss.fit([dW, dN], target,
+                         verbose=2,
+                         batch_size=batch_size,
+                         epochs=epochs,
+                         callbacks=callbacks)
 
 
 # In[18]:
